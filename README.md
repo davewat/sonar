@@ -1,12 +1,56 @@
 # sonar
 
-A lightweight Go diagnostic web server. It responds to every HTTP request —
-any method, any path — with a single page showing what the server can see
-about your connection: client IP/port, protocol, TLS details (when enabled),
-request headers, a best-guess browser/OS, and server-side processing time.
+[![Go Reference](https://img.shields.io/badge/go-1.26-00ADD8?logo=go&logoColor=white)](go.mod)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)](go.mod)
 
-Useful for quickly verifying connectivity, checking what a client's request
-looks like from the server side, or testing TLS termination.
+A lightweight Go diagnostic web server. It responds to **every** HTTP
+request — any method, any path — with a single page showing exactly what
+the server can see about your connection: client IP/port, protocol, TLS
+details, request headers, a best-guess browser/OS, and server-side
+processing time.
+
+Useful for quickly verifying connectivity, checking what a client's
+request looks like from the server side, debugging reverse proxies and
+load balancers, or testing TLS termination.
+
+<p align="center">
+  <img src="docs/screenshots/sonar-tls-geoip.png" alt="sonar diagnostic page over HTTPS, with GeoIP enabled" width="640">
+</p>
+
+<p align="center"><sub>Example output — all values above are fabricated for illustration; sonar never ships with sample data.</sub></p>
+
+## Why sonar
+
+- **Zero dependencies.** Standard library only — a small, auditable
+  binary you can trust to sit in front of real traffic.
+- **Nothing touches disk.** TLS certificates are generated in memory at
+  startup and never written out, even temporarily.
+- **Quiet by default.** No outbound network calls unless you explicitly
+  opt in with `--geoip`.
+- **XSS-safe by construction.** Every request-derived value (headers,
+  User-Agent, path) is rendered through `html/template`, never
+  concatenated into raw HTML.
+- **One binary, no service.** Installers drop a single executable in
+  `$HOME/.local/bin`; nothing is registered to run in the background.
+
+## How a request becomes a page
+
+```mermaid
+flowchart LR
+    A[Incoming request] --> B[Gather diagnostics]
+    B --> C{"--tls?"}
+    C -- yes --> D[Add negotiated TLS info]
+    C -- no --> E
+    D --> E{"--geoip?"}
+    E -- yes --> F[Look up public IP via ip-api.com]
+    E -- no --> G
+    F --> G[Render html/template page]
+    G --> H[Respond 200 with diagnostics]
+```
+
+Private and loopback addresses are always skipped for GeoIP, and a
+lookup failure never fails the request — the section is simply omitted.
 
 ## Install
 
@@ -47,19 +91,6 @@ go build -o sonar ./cmd/sonar
 
 No third-party dependencies — standard library only.
 
-## Project layout
-
-```
-cmd/sonar/           entrypoint (flags, startup, listener/TLS wiring)
-internal/server/      HTTP handler, diagnostics gathering, in-memory TLS cert, GeoIP, page template
-internal/server/web/  the diagnostic page template (embedded via go:embed)
-scripts/               install-ubuntu.sh, install-macos.sh
-```
-
-`internal/` is a Go compiler-enforced convention: packages under it can only
-be imported from within this module, which is appropriate here since
-`server` is sonar's private implementation, not a reusable library.
-
 ## Usage
 
 ```sh
@@ -77,6 +108,10 @@ Flags:
 | `--port`   | `443`   | Port to listen on. |
 | `--tls`    | `false` | Serve HTTPS using an in-memory, self-signed certificate generated at startup. Never written to disk. |
 | `--geoip`  | `false` | Enable outbound GeoIP lookups (ip-api.com) to show country/region/city/ISP for the visitor's public IP. |
+
+<p align="center">
+  <img src="docs/screenshots/sonar-http.png" alt="sonar diagnostic page over plain HTTP" width="640">
+</p>
 
 ### Privileged ports
 
@@ -113,6 +148,19 @@ not from `X-Forwarded-For` — if you put sonar behind a reverse proxy,
 you'll see the proxy's address. `X-Forwarded-For` is shown informationally
 in the headers table (it's attacker-spoofable, so it's never trusted for
 the reported client IP).
+
+## Project layout
+
+```
+cmd/sonar/           entrypoint (flags, startup, listener/TLS wiring)
+internal/server/      HTTP handler, diagnostics gathering, in-memory TLS cert, GeoIP, page template
+internal/server/web/  the diagnostic page template (embedded via go:embed)
+scripts/               install-ubuntu.sh, install-macos.sh
+```
+
+`internal/` is a Go compiler-enforced convention: packages under it can only
+be imported from within this module, which is appropriate here since
+`server` is sonar's private implementation, not a reusable library.
 
 ## License
 
