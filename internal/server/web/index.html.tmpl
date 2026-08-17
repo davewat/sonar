@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>sonar — connection diagnostics</title>
+<style>
+  :root {
+    color-scheme: dark;
+    --bg-1: #0f0c29;
+    --bg-2: #302b63;
+    --bg-3: #24243e;
+    --card-bg: rgba(255, 255, 255, 0.06);
+    --card-border: rgba(255, 255, 255, 0.12);
+    --text: #eef0f6;
+    --text-dim: #a7acc4;
+    --accent: #6ee7ff;
+    --accent-2: #a78bfa;
+    --ok: #4ade80;
+    --row-border: rgba(255, 255, 255, 0.08);
+    --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: var(--sans);
+    color: var(--text);
+    background: radial-gradient(circle at 20% -10%, rgba(110, 231, 255, 0.15), transparent 45%),
+                radial-gradient(circle at 100% 0%, rgba(167, 139, 250, 0.18), transparent 40%),
+                linear-gradient(135deg, var(--bg-1), var(--bg-2) 55%, var(--bg-3));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+
+  .card {
+    width: 100%;
+    max-width: 640px;
+    background: var(--card-bg);
+    border: 1px solid var(--card-border);
+    border-radius: 20px;
+    padding: 32px;
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    box-shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 4px;
+  }
+
+  .badge {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    box-shadow: 0 8px 20px rgba(110, 231, 255, 0.25);
+  }
+
+  .badge svg { width: 22px; height: 22px; }
+
+  h1 {
+    font-size: 1.3rem;
+    margin: 0;
+    letter-spacing: -0.01em;
+  }
+
+  .subtitle {
+    color: var(--text-dim);
+    font-size: 0.88rem;
+    margin: 2px 0 24px;
+  }
+
+  .status-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--ok);
+    margin-bottom: 24px;
+  }
+
+  .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ok);
+    box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.18);
+  }
+
+  section { margin-bottom: 22px; }
+  section:last-child { margin-bottom: 0; }
+
+  .section-title {
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-dim);
+    margin: 0 0 10px;
+  }
+
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px 20px;
+  }
+
+  .row {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--row-border);
+  }
+
+  .row .label { font-size: 0.72rem; color: var(--text-dim); }
+  .row .value {
+    font-family: var(--mono);
+    font-size: 0.88rem;
+    word-break: break-word;
+  }
+
+  table.headers {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+  }
+  table.headers td {
+    padding: 6px 0;
+    border-bottom: 1px solid var(--row-border);
+    vertical-align: top;
+  }
+  table.headers td.name {
+    color: var(--text-dim);
+    white-space: nowrap;
+    padding-right: 16px;
+    font-family: var(--mono);
+  }
+  table.headers td.value {
+    font-family: var(--mono);
+    word-break: break-word;
+  }
+
+  .gauge-wrap {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  .gauge-track {
+    flex: 1;
+    height: 10px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    overflow: hidden;
+  }
+
+  .gauge-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+  }
+
+  .gauge-value {
+    font-family: var(--mono);
+    font-size: 0.9rem;
+    white-space: nowrap;
+    min-width: 72px;
+    text-align: right;
+  }
+
+  .gauge-note {
+    color: var(--text-dim);
+    font-size: 0.72rem;
+    margin-top: 6px;
+  }
+
+  footer {
+    margin-top: 28px;
+    padding-top: 16px;
+    border-top: 1px solid var(--row-border);
+    font-size: 0.74rem;
+    color: var(--text-dim);
+    display: flex;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  @media (max-width: 480px) {
+    .grid { grid-template-columns: 1fr; }
+    .card { padding: 24px 20px; border-radius: 16px; }
+    footer { flex-direction: column; }
+  }
+</style>
+</head>
+<body>
+  <main class="card">
+    <div class="header">
+      <div class="badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#0f0c29" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="2"></circle>
+          <path d="M8.5 15.5a6 6 0 0 1 0-7"></path>
+          <path d="M15.5 15.5a6 6 0 0 0 0-7"></path>
+          <path d="M5 19a11 11 0 0 1 0-14"></path>
+          <path d="M19 19a11 11 0 0 0 0-14"></path>
+        </svg>
+      </div>
+      <div>
+        <h1>sonar</h1>
+      </div>
+    </div>
+    <p class="subtitle">Connection diagnostics for this request</p>
+
+    <div class="status-line">
+      <span class="status-dot"></span>
+      <span>You are connected{{if .TLS}} over TLS{{end}}</span>
+    </div>
+
+    <section>
+      <p class="section-title">Connection</p>
+      <div class="grid">
+        <div class="row">
+          <span class="label">Client IP</span>
+          <span class="value">{{.ClientIP}}</span>
+        </div>
+        <div class="row">
+          <span class="label">Client port</span>
+          <span class="value">{{.ClientPort}}</span>
+        </div>
+        <div class="row">
+          <span class="label">Protocol</span>
+          <span class="value">{{.Proto}}</span>
+        </div>
+        <div class="row">
+          <span class="label">Method</span>
+          <span class="value">{{.Method}}</span>
+        </div>
+        <div class="row">
+          <span class="label">Host</span>
+          <span class="value">{{.Host}}</span>
+        </div>
+        <div class="row">
+          <span class="label">Path</span>
+          <span class="value">{{.Path}}</span>
+        </div>
+        <div class="row">
+          <span class="label">Server time (UTC)</span>
+          <span class="value">{{.Timestamp}}</span>
+        </div>
+      </div>
+    </section>
+
+    {{if .TLS}}
+    <section>
+      <p class="section-title">TLS</p>
+      <div class="grid">
+        <div class="row">
+          <span class="label">Version</span>
+          <span class="value">{{.TLS.Version}}</span>
+        </div>
+        <div class="row">
+          <span class="label">Cipher suite</span>
+          <span class="value">{{.TLS.CipherSuite}}</span>
+        </div>
+        <div class="row">
+          <span class="label">ALPN</span>
+          <span class="value">{{if .TLS.ALPN}}{{.TLS.ALPN}}{{else}}—{{end}}</span>
+        </div>
+      </div>
+    </section>
+    {{end}}
+
+    <section>
+      <p class="section-title">Browser &amp; OS (best guess)</p>
+      <div class="grid">
+        <div class="row">
+          <span class="label">Browser</span>
+          <span class="value">{{.BrowserGuess}}</span>
+        </div>
+        <div class="row">
+          <span class="label">Operating system</span>
+          <span class="value">{{.OSGuess}}</span>
+        </div>
+      </div>
+      <div class="row" style="border-bottom:none;">
+        <span class="label">User-Agent</span>
+        <span class="value">{{.UserAgent}}</span>
+      </div>
+    </section>
+
+    {{if .Headers}}
+    <section>
+      <p class="section-title">Request headers</p>
+      <table class="headers">
+        {{range .Headers}}
+        <tr>
+          <td class="name">{{.Name}}</td>
+          <td class="value">{{.Value}}</td>
+        </tr>
+        {{end}}
+      </table>
+    </section>
+    {{end}}
+
+    {{if .GeoIP}}
+    <section>
+      <p class="section-title">GeoIP (ip-api.com)</p>
+      <div class="grid">
+        <div class="row">
+          <span class="label">City</span>
+          <span class="value">{{if .GeoIP.City}}{{.GeoIP.City}}{{else}}—{{end}}</span>
+        </div>
+        <div class="row">
+          <span class="label">Region</span>
+          <span class="value">{{if .GeoIP.Region}}{{.GeoIP.Region}}{{else}}—{{end}}</span>
+        </div>
+        <div class="row">
+          <span class="label">Country</span>
+          <span class="value">{{if .GeoIP.Country}}{{.GeoIP.Country}}{{else}}—{{end}}</span>
+        </div>
+        <div class="row">
+          <span class="label">ISP</span>
+          <span class="value">{{if .GeoIP.ISP}}{{.GeoIP.ISP}}{{else}}—{{end}}</span>
+        </div>
+      </div>
+    </section>
+    {{end}}
+
+    <section>
+      <p class="section-title">Server-side processing time</p>
+      <div class="gauge-wrap">
+        <div class="gauge-track">
+          <svg viewBox="0 0 200 10" width="100%" height="10" preserveAspectRatio="none">
+            <rect x="0" y="0" width="{{printf "%.1f" .GaugeWidthPx}}" height="10" rx="5" fill="url(#gaugeGradient)"></rect>
+            <defs>
+              <linearGradient id="gaugeGradient" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#6ee7ff"></stop>
+                <stop offset="100%" stop-color="#a78bfa"></stop>
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+        <span class="gauge-value">{{printf "%.2f" .ProcessingTimeMs}} ms</span>
+      </div>
+      <p class="gauge-note">Time spent gathering diagnostics server-side{{if .GeoIP}} (including the GeoIP lookup){{end}} — excludes network transit to your browser, so it is not a round-trip measurement.</p>
+    </section>
+
+    <footer>
+      <span>sonar diagnostic server</span>
+      <span>Refresh this page to run the check again</span>
+    </footer>
+  </main>
+</body>
+</html>
